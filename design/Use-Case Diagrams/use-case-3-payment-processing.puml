@@ -1,0 +1,67 @@
+@startuml use-case-3-payment-processing
+' PayLink use case diagram 3 of 6: Payment Processing
+' Sources: Requirement/Requirements.md.md (FR-06, FR-11, FR-14..FR-21, FR-25), Requirement/UseCases.md
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #3A6EA5
+}
+
+title PayLink - Use Case Diagram 3: Payment Processing
+
+' ---------- Primary actors (left) ----------
+actor Customer
+actor Agent
+
+' ---------- Secondary actors (right) ----------
+actor "ElectroCO\n(REST / JSON)" as ElectroCO <<system>>
+actor "AquaCo\n(SOAP-style XML)" as AquaCo <<system>>
+actor "TopUpNet\n(async REST + callback)" as TopUpNet <<system>>
+actor "NetCo\n(daily CSV batch)" as NetCo <<system>>
+
+rectangle "PayLink System - Payment Processing" {
+  usecase "UC-11 Pay Bill" as UC11
+  usecase "UC-11a Pay\nElectricity Bill" as UC11a
+  usecase "UC-11b Pay\nWater Bill" as UC11b
+  usecase "UC-11c Mobile\nTop-up" as UC11c
+  usecase "UC-11d Pay\nInternet Bill" as UC11d
+  usecase "UC-17 Pay Bill\nfor Customer" as UC17
+
+  usecase "Validate Request\n(input, idempotency, fee)" as VAL
+  usecase "Authorize & Hold Funds\n(PIN, limits, velocity)" as AUTH
+  usecase "UC-10 Inquire Bill" as UC10
+  usecase "Finalize Payment" as FIN
+  usecase "Credit Agent\nCommission (40%)" as COMM
+}
+
+' ---------- Primary actor associations ----------
+Customer --> UC11
+Agent --> UC17
+
+' ---------- Generalization (parent <|-- child; written this way so children sit right of UC-11) ----------
+UC11 <|-- UC11a
+UC11 <|-- UC11b
+UC11 <|-- UC11c
+UC11 <|-- UC11d
+UC11 <|-- UC17
+
+' ---------- Include ----------
+UC11 ..> VAL : <<include>>
+UC11 ..> AUTH : <<include>>
+UC11 ..> FIN : <<include>>
+UC11a ..> UC10 : <<include>>
+UC11b ..> UC10 : <<include>>
+
+' ---------- Extend (extension --> base) ----------
+' condition: payment was agent-assisted and reaches Completed (AC-25-C)
+COMM ..> FIN : <<extend>>
+
+' ---------- Billers (drawn right of the use cases) ----------
+UC11a --> ElectroCO
+UC11b --> AquaCo
+UC11c --> TopUpNet
+UC11d --> NetCo
+
+@enduml

@@ -1,0 +1,68 @@
+@startuml use-case-6-overview
+' PayLink use case diagram 6 of 6: Overview
+' Each package stands for one of diagrams 1-5; an actor points to a package
+' when it is associated with at least one use case in that diagram.
+left to right direction
+skinparam actorStyle awesome
+skinparam package {
+  BackgroundColor #EAF2FB
+  BorderColor #3A6EA5
+}
+
+title PayLink - Use Case Diagram 6: Overview
+
+' ---------- Primary actors (left) ----------
+actor Customer
+actor Agent
+actor Admin
+actor "Support Employee" as Support
+actor "Finance Employee" as Finance
+actor "Scheduler" as Scheduler <<time>>
+
+' ---------- Secondary actors (right) ----------
+actor "Funding Provider\n(Payment Gateway + Bank)" as Funding <<system>>
+actor "Biller\n(ElectroCO, AquaCo,\nTopUpNet, NetCo)" as Biller <<system>>
+actor "SMS / Push Provider" as SMS <<system>>
+
+' Each package holds an invisible placeholder: an empty package shows its alias in the tab.
+rectangle "PayLink System" {
+  package "1. Accounts & Wallet" as P1 {
+    rectangle " " as d1 #transparent;line:transparent
+  }
+  package "2. Biller Catalog & Fees" as P2 {
+    rectangle " " as d2 #transparent;line:transparent
+  }
+  package "3. Payment Processing" as P3 {
+    rectangle " " as d3 #transparent;line:transparent
+  }
+  package "4. Async & Reconciliation" as P4 {
+    rectangle " " as d4 #transparent;line:transparent
+  }
+  package "5. Support & Finance" as P5 {
+    rectangle " " as d5 #transparent;line:transparent
+  }
+}
+
+' ---------- Primary actors ----------
+Customer --> P1
+Customer --> P2
+Customer --> P3
+Customer --> P5
+Agent --> P1
+Agent --> P3
+Admin --> P1
+Admin --> P2
+Support --> P1
+Support --> P5
+Finance --> P5
+Scheduler --> P4
+
+' ---------- Secondary actors (drawn right of the packages) ----------
+P1 <-- Funding
+P1 --> SMS
+P4 --> SMS
+P2 --> Biller
+P3 --> Biller
+P4 <-- Biller
+
+@enduml

@@ -1,0 +1,144 @@
+%% Module: Payment Processing
+%% Pattern: State (only the transitions in brief section 2.5 are allowed)
+%% Dashed grey classes belong to other modules.
+
+classDiagram
+direction TB
+
+class PaymentService {
+    +inquire(serviceId UUID, accountRef String) FeeQuote
+    +pay(request PayBillRequest, idempotencyKey String) PaymentResult
+    +onBillerCallback(reference String, result BillerResult)
+    +refund(paymentId UUID)
+}
+class PayBillRequest {
+    +UUID customerId
+    +UUID agentId
+    +UUID billerServiceId
+    +String accountRef
+    +Decimal amount
+}
+class PaymentResult {
+    +UUID paymentId
+    +String reference
+    +String state
+    +Decimal amount
+    +Decimal fee
+    +Decimal total
+    +String message
+}
+class IdempotencyStore {
+    +find(key String) PaymentResult
+    +save(key String, result PaymentResult)
+}
+class Payment {
+    +UUID id
+    +String reference
+    +String idempotencyKey
+    +UUID customerId
+    +UUID agentId
+    +UUID billerServiceId
+    +String accountRef
+    +Decimal amount
+    +Decimal fee
+    +Decimal total
+    -PaymentState state
+    +holdFunds()
+    +reject(reason String)
+    +sendToBiller()
+    +confirm(billerRef String)
+    +refuse(reason String)
+    +timeout()
+    +refund()
+    ~changeState(next PaymentState, reason String)
+}
+class PaymentStatusChange {
+    +String fromState
+    +String toState
+    +String reason
+    +DateTime at
+}
+class PaymentState {
+    <<abstract>>
+    +holdFunds(p Payment)
+    +reject(p Payment, reason String)
+    +sendToBiller(p Payment)
+    +confirm(p Payment, billerRef String)
+    +refuse(p Payment, reason String)
+    +timeout(p Payment)
+    +refund(p Payment)
+    +isFinal() boolean
+    +name() String
+}
+class InitiatedState
+class FundsHeldState
+class SentToBillerState
+class UnknownState
+class CompletedState
+class FailedState
+class RejectedState
+class RefundedState
+
+class Customer {
+    <<AccountsAndWallet>>
+}
+class Agent {
+    <<AccountsAndWallet>>
+}
+class Wallet {
+    <<AccountsAndWallet>>
+}
+class BillerService {
+    <<BillerCatalog>>
+}
+class BillerGatewayFactory {
+    <<BillerIntegration>>
+}
+class FeeService {
+    <<FeesAndCommissions>>
+}
+class CommissionPolicy {
+    <<FeesAndCommissions>>
+}
+class FraudCheckHandler {
+    <<FraudChecks>>
+}
+class PaymentEventPublisher {
+    <<Notifications>>
+}
+class RetryScheduler {
+    <<Retries>>
+}
+
+PaymentService --> IdempotencyStore
+PaymentService ..> PayBillRequest : receives
+PaymentService ..> PaymentResult : returns
+IdempotencyStore o-- PaymentResult : caches by key
+PaymentResult ..> Payment : snapshot of
+Payment --> PaymentState : current
+Payment "1" *-- "*" PaymentStatusChange : history
+Payment --> Customer
+Payment --> "0..1" Agent
+Payment --> BillerService
+
+PaymentState <|-- InitiatedState
+PaymentState <|-- FundsHeldState
+PaymentState <|-- SentToBillerState
+PaymentState <|-- UnknownState
+PaymentState <|-- CompletedState
+PaymentState <|-- FailedState
+PaymentState <|-- RejectedState
+PaymentState <|-- RefundedState
+
+PaymentService --> FraudCheckHandler : runs chain
+PaymentService --> FeeService : quote
+PaymentService --> CommissionPolicy
+PaymentService --> BillerGatewayFactory : get gateway
+PaymentService --> Wallet : hold / capture / release
+PaymentService --> PaymentEventPublisher : publishes
+PaymentService --> RetryScheduler : schedules requery
+
+note for PaymentState "Each subclass allows only its own transitions; anything else throws IllegalTransitionException. UnknownState never refunds."
+
+classDef external fill:#eeeeee,stroke:#999999,stroke-dasharray:5 5
+cssClass "Customer,Agent,Wallet,BillerService,BillerGatewayFactory,FeeService,CommissionPolicy,FraudCheckHandler,PaymentEventPublisher,RetryScheduler" external

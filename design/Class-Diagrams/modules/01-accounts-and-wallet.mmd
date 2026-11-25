@@ -1,0 +1,63 @@
+%% Module: Accounts and Wallet
+%% Balances are computed from ledger entries, never stored. Money is Decimal.
+
+classDiagram
+direction TB
+
+class Customer {
+    +UUID id
+    +String name
+    +String phone
+    +VerificationLevel level
+    +boolean blocked
+    +DateTime blockedUntil
+    +upgradeToVerified()
+    +block(until DateTime)
+    +unblock()
+}
+class Agent {
+    +UUID id
+    +String shopName
+    +String terminalId
+}
+class VerificationLevel {
+    <<enumeration>>
+    BASIC
+    VERIFIED
+}
+class Wallet {
+    +UUID id
+    +UUID ownerId
+    +availableBalance() Decimal
+    +heldBalance() Decimal
+    +topUp(amount Decimal, source String)
+    +hold(amount Decimal, paymentId UUID)
+    +captureHold(paymentId UUID)
+    +releaseHold(paymentId UUID)
+    +credit(amount Decimal, reason String)
+}
+class LedgerEntry {
+    +UUID id
+    +UUID walletId
+    +EntryType type
+    +Decimal amount
+    +UUID paymentId
+    +String reason
+    +DateTime createdAt
+}
+class EntryType {
+    <<enumeration>>
+    TOP_UP
+    HOLD
+    RELEASE
+    CAPTURE
+    FEE_INCOME
+    COMMISSION
+    REFUND
+}
+
+Customer "1" --> "1" Wallet : owns
+Agent "1" --> "1" Wallet : owns
+Customer --> VerificationLevel
+Wallet "1" *-- "*" LedgerEntry : balance = sum of entries
+LedgerEntry --> EntryType

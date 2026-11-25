@@ -1,0 +1,53 @@
+%% Module: Fraud Checks
+%% Pattern: Chain of Responsibility
+%% Dashed grey classes belong to other modules.
+
+classDiagram
+direction TB
+
+class FraudCheckHandler {
+    <<abstract>>
+    -FraudCheckHandler next
+    +setNext(next FraudCheckHandler) FraudCheckHandler
+    +check(payment Payment, customer Customer) FraudResult
+    #doCheck(payment Payment, customer Customer)* FraudResult
+}
+class BlockedAccountCheck
+class AmountLimitCheck {
+    -Decimal minAmount
+    -Decimal maxAmount
+}
+class DailyLimitCheck {
+    -Decimal basicLimit
+    -Decimal verifiedLimit
+}
+class VelocityCheck {
+    -int maxPayments
+    -Duration window
+    -Duration blockFor
+}
+class FraudResult {
+    +boolean passed
+    +String reason
+}
+class Payment {
+    <<PaymentProcessing>>
+}
+class Customer {
+    <<AccountsAndWallet>>
+}
+
+FraudCheckHandler <|-- BlockedAccountCheck
+FraudCheckHandler <|-- AmountLimitCheck
+FraudCheckHandler <|-- DailyLimitCheck
+FraudCheckHandler <|-- VelocityCheck
+FraudCheckHandler o-- FraudCheckHandler : next
+FraudCheckHandler ..> FraudResult
+FraudCheckHandler ..> Payment : inspects
+FraudCheckHandler ..> Customer : inspects
+VelocityCheck ..> Customer : blocks 10 min
+
+note for FraudCheckHandler "Order: Blocked -> AmountLimit -> DailyLimit -> Velocity. The first failure stops the chain."
+
+classDef external fill:#eeeeee,stroke:#999999,stroke-dasharray:5 5
+cssClass "Payment,Customer" external

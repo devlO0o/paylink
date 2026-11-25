@@ -1,0 +1,34 @@
+sequenceDiagram
+    autonumber
+    actor Customer
+    participant PayLink
+    participant ElectroCo
+    participant SMS as SMS Gateway
+    participant Push as Push Service
+
+    Customer->>PayLink: Pay electricity bill (meter number)
+    PayLink->>PayLink: Check verification level and daily limit
+    PayLink->>ElectroCo: Get bill (meter number)
+    ElectroCo-->>PayLink: Bill amount
+    PayLink->>PayLink: Add 2.50 EGP service fee
+    PayLink-->>Customer: Show total (bill + 2.50 EGP fee)
+    Customer->>PayLink: Confirm payment
+
+    PayLink->>PayLink: Fraud checks (daily limit, payments in last minute, blocked account)
+
+    alt Fraud checks pass
+        PayLink->>PayLink: Move total from available balance to held balance
+        PayLink->>ElectroCo: Send payment (unique reference)
+        ElectroCo-->>PayLink: Confirm payment (reference)
+        PayLink->>PayLink: Turn hold into final charge
+        PayLink->>PayLink: Credit fee income
+        opt Agent involved
+            PayLink->>PayLink: Record agent commission
+        end
+        PayLink->>SMS: Send payment confirmation SMS
+        SMS-->>Customer: SMS
+        PayLink->>Push: Send push notification
+        Push-->>Customer: Push notification
+    else Fraud checks fail
+        PayLink-->>Customer: Payment rejected (reason)
+    end

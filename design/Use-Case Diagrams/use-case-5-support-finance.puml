@@ -1,0 +1,53 @@
+@startuml use-case-5-support-finance
+' PayLink use case diagram 5 of 6: Support & Finance
+' Sources: Requirement/Requirements.md.md (FR-26..FR-28, FR-30), Requirement/UseCases.md
+' UC-25 Block Account (Support Employee) is shown in diagram 1.
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #3A6EA5
+}
+
+title PayLink - Use Case Diagram 5: Support & Finance
+
+' ---------- Primary actors (left) ----------
+actor Customer
+actor "Support Employee" as Support
+actor "Finance Employee" as Finance
+
+rectangle "PayLink System - Support & Finance" {
+  usecase "UC-12 Track Payments" as UC12
+  usecase "UC-13 Get Receipt" as UC13
+  usecase "UC-14 Report Issue" as UC14
+  usecase "UC-15 Request Refund" as UC15
+  usecase "UC-22 Look Up Payment" as UC22
+  usecase "UC-23 Manage Tickets" as UC23
+  usecase "UC-24 Approve Refund" as UC24
+  usecase "UC-26 Review\nDiscrepancies" as UC26
+  usecase "UC-27 Monitor Pending\nPayments" as UC27
+  usecase "UC-28 Financial Reports" as UC28
+}
+
+' ---------- Customer ----------
+Customer --> UC12
+Customer --> UC13
+Customer --> UC14
+Customer --> UC15
+
+' ---------- Support Employee ----------
+Support --> UC22
+Support --> UC23
+Support --> UC24
+Support --> UC26
+
+' ---------- Finance Employee ----------
+Finance --> UC27
+Finance --> UC28
+
+' ---------- Extend (extension --> base) ----------
+' UC-24 runs when the ticket is about a refund that qualifies (FR-28, AC-28-D)
+UC24 ..> UC23 : <<extend>>
+
+@enduml

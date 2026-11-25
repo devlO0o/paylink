@@ -1,0 +1,64 @@
+%% Module: Fees and Commissions
+%% Pattern: Strategy (one fee rule per biller category)
+%% Dashed grey classes belong to other modules.
+
+classDiagram
+direction TB
+
+class FeeStrategy {
+    <<interface>>
+    +calculate(amount Decimal) Decimal
+}
+class FixedFeeStrategy {
+    -Decimal fee
+}
+class PercentageFeeStrategy {
+    -Decimal rate
+    -Decimal minimumFee
+}
+class TieredFeeStrategy {
+    -Decimal threshold
+    -Decimal lowFee
+    -Decimal highFee
+}
+class PromotionFeeStrategy {
+    -FeeStrategy regular
+    -String billerCode
+    -DateTime start
+    -DateTime end
+    -Clock clock
+}
+class FeeService {
+    -Map strategiesByCategory
+    +quote(service BillerService, amount Decimal) FeeQuote
+}
+class FeeQuote {
+    +Decimal amount
+    +Decimal fee
+    +Decimal total
+}
+class CommissionPolicy {
+    -Decimal agentShare
+    +commissionFor(fee Decimal) Decimal
+}
+class BillerService {
+    <<BillerCatalog>>
+}
+
+FeeStrategy <|.. FixedFeeStrategy
+FeeStrategy <|.. PercentageFeeStrategy
+FeeStrategy <|.. TieredFeeStrategy
+FeeStrategy <|.. PromotionFeeStrategy
+PromotionFeeStrategy o-- FeeStrategy : wraps regular fee
+FeeService o-- FeeStrategy : selects by category
+FeeService ..> FeeQuote
+FeeService ..> BillerService : reads category
+
+note for FixedFeeStrategy "Electricity and water: 2.50 EGP"
+note for PercentageFeeStrategy "Mobile top-up: 1.5%, min 1 EGP"
+note for TieredFeeStrategy "Internet: 2 EGP up to 200, 4 EGP above"
+note for PromotionFeeStrategy "Returns 0 for the promoted biller inside the window, else delegates to regular"
+note for CommissionPolicy "Agent gets 40% of the fee"
+
+classDef external fill:#eeeeee,stroke:#999999,stroke-dasharray:5 5
+cssClass "BillerService" external

@@ -1,0 +1,31 @@
+%% Module: Biller Catalog
+
+classDiagram
+direction TB
+
+class Biller {
+    +UUID id
+    +String code
+    +String name
+    +BillerCategory category
+    +boolean active
+    +disable()
+}
+class BillerService {
+    +UUID id
+    +String name
+    +List~String~ requiredFields
+    +Decimal minAmount
+    +Decimal maxAmount
+    +boolean active
+}
+class BillerCategory {
+    <<enumeration>>
+    ELECTRICITY
+    WATER
+    MOBILE
+    INTERNET
+}
+
+Biller "1" *-- "*" BillerService : offers
+Biller --> BillerCategory

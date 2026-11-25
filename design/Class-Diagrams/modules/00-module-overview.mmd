@@ -1,0 +1,75 @@
+%% PayLink - how the modules connect
+%% Each box is one module; the methods are its public interface (the only way other modules call it).
+%% Arrows point from the module that depends to the module it uses.
+%% Per-module class diagrams: 01-...09- in this folder.
+
+classDiagram
+direction TB
+
+class PaymentProcessing {
+    <<module - State>>
+    +inquire(serviceId, accountRef) FeeQuote
+    +pay(PayBillRequest, idempotencyKey) PaymentResult
+    +onBillerCallback(reference, BillerResult)
+    +refund(paymentId)
+}
+class AccountsAndWallet {
+    <<module>>
+    +getCustomer(id) Customer
+    +hold(walletId, amount, paymentId)
+    +captureHold(paymentId)
+    +releaseHold(paymentId)
+    +credit(walletId, amount, reason)
+}
+class BillerCatalog {
+    <<module>>
+    +listBillers() List~Biller~
+    +getService(id) BillerService
+}
+class BillerIntegration {
+    <<module - Adapter + Factory>>
+    +forBiller(billerCode) BillerGateway
+}
+class FeesAndCommissions {
+    <<module - Strategy>>
+    +quote(BillerService, amount) FeeQuote
+    +commissionFor(fee) Decimal
+}
+class FraudChecks {
+    <<module - Chain of Responsibility>>
+    +check(Payment, Customer) FraudResult
+}
+class Notifications {
+    <<module - Observer>>
+    +publish(PaymentEvent)
+    +subscribe(PaymentEventListener)
+}
+class Retries {
+    <<module - Command>>
+    +schedule(RetryableCommand)
+    +runDue()
+}
+class Reconciliation {
+    <<module>>
+    +reconcile(SettlementFile) ReconciliationReport
+}
+
+PaymentProcessing --> AccountsAndWallet : hold, capture, release, commission
+PaymentProcessing --> BillerCatalog : service, limits
+PaymentProcessing --> FeesAndCommissions : fee and commission
+PaymentProcessing --> FraudChecks : run chain before hold
+PaymentProcessing --> BillerIntegration : inquire, pay
+PaymentProcessing --> Notifications : publish payment events
+PaymentProcessing --> Retries : schedule requery on Unknown
+
+FeesAndCommissions ..> BillerCatalog : reads category
+FraudChecks ..> AccountsAndWallet : reads level, blocks account
+BillerIntegration ..> BillerCatalog : biller code
+Notifications --> Retries : schedule failed SMS / email
+Retries --> BillerIntegration : requery status
+Retries --> PaymentProcessing : confirm or refuse
+Reconciliation --> PaymentProcessing : compare payments
+Reconciliation ..> BillerIntegration : settlement files
+
+note for PaymentProcessing "Orchestrator: the only module that drives a payment through its life cycle"
+note for Notifications "Phase 2: moves behind a message broker; PaymentProcessing only publishes events"

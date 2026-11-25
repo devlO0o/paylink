@@ -1,0 +1,42 @@
+sequenceDiagram
+    autonumber
+    actor C as Customer
+    participant PP as Payment Processing
+    participant BI as AquaCo Adapter<br/>(Biller Integration)
+    participant AQ as AquaCo (mock)
+    participant W as Accounts & Wallet
+    participant L as Ledger
+    participant N as Notifications
+    participant SMS as SMS Provider
+
+    Note over PP,W: Precondition: payment P-123 is in FundsHeld.<br/>352.50 EGP (350.00 bill + 2.50 fee) has moved from available to held.
+
+    PP->>PP: transition FundsHeld → SentToBiller
+    PP->>BI: pay(reference P-123, account, 350.00 EGP)
+    BI->>BI: map domain request to SOAP-style XML
+    BI->>AQ: POST payment XML (reference P-123)
+    AQ-->>BI: XML fault, errorCode = AQ-417
+    BI->>BI: map AQ-417 to "Amount exceeds the water bill due"
+    BI-->>PP: BillerRefused(code AQ-417, reason)
+
+    PP->>PP: transition SentToBiller → Failed (store code and reason)
+
+    PP->>W: releaseHold(P-123, 352.50 EGP)
+    activate W
+    W->>L: append entry HOLD_RELEASE<br/>held −352.50, available +352.50, ref P-123
+    L-->>W: entry saved (balances recomputed from ledger)
+    W-->>PP: hold released
+    deactivate W
+
+    PP->>PP: transition Failed → Refunded (final state)
+    PP->>PP: write audit record (who, when, why)
+
+    PP-)N: PaymentRefunded event (P-123, reason)
+    N->>SMS: send SMS "Your water bill payment P-123 failed:<br/>amount exceeds the bill due. 352.50 EGP is back in your wallet."
+    SMS-->>N: delivered
+    N-->>C: SMS received
+
+    alt SMS provider down
+        N->>N: retry up to 3 times, then mark undelivered
+        Note over N: The refund stands even if the SMS fails (hard case 5)
+    end

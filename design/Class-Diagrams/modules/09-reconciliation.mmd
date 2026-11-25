@@ -1,0 +1,42 @@
+%% Module: Reconciliation
+%% Dashed grey classes belong to other modules.
+
+classDiagram
+direction TB
+
+class ReconciliationService {
+    +reconcile(file SettlementFile) ReconciliationReport
+}
+class SettlementFile {
+    +String billerCode
+    +Date businessDate
+    +List~SettlementLine~ lines
+}
+class SettlementLine {
+    +String reference
+    +Decimal amount
+}
+class ReconciliationReport {
+    +Date businessDate
+    +List~Discrepancy~ discrepancies
+}
+class Discrepancy {
+    +String reference
+    +String paylinkState
+    +String billerState
+    +String description
+}
+class Payment {
+    <<PaymentProcessing>>
+}
+
+ReconciliationService ..> SettlementFile : reads
+ReconciliationService ..> ReconciliationReport : produces
+ReconciliationService --> Payment : compares
+SettlementFile "1" *-- "*" SettlementLine
+ReconciliationReport "1" *-- "*" Discrepancy
+
+note for Discrepancy "Example: biller lists a payment PayLink has as Failed (hard case 7)"
+
+classDef external fill:#eeeeee,stroke:#999999,stroke-dasharray:5 5
+cssClass "Payment" external
