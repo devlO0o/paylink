@@ -1,0 +1,78 @@
+%% Module: Notifications
+%% Pattern: Observer (listeners subscribe to payment events)
+%% Dashed grey classes belong to other modules.
+
+classDiagram
+direction TB
+
+class PaymentEventPublisher {
+    -List~PaymentEventListener~ listeners
+    +subscribe(l PaymentEventListener)
+    +unsubscribe(l PaymentEventListener)
+    +publish(e PaymentEvent)
+}
+class PaymentEventListener {
+    <<interface>>
+    +onPaymentEvent(e PaymentEvent)
+}
+class PaymentEvent {
+    +UUID paymentId
+    +PaymentEventType type
+    +String reason
+    +DateTime occurredAt
+}
+class PaymentEventType {
+    <<enumeration>>
+    COMPLETED
+    FAILED
+    UNKNOWN
+    REJECTED
+    REFUNDED
+}
+class NotificationListener {
+    -List~NotificationSender~ senders
+    -TemplateRepository templates
+}
+class AuditLogListener {
+    -AuditLog auditLog
+}
+class NotificationSender {
+    <<interface>>
+    +channel() Channel
+    +send(n Notification)
+}
+class SmsSender
+class PushSender
+class EmailSender
+class Notification {
+    +UUID id
+    +UUID customerId
+    +Channel channel
+    +String body
+    +int attempts
+    +DeliveryStatus status
+    +markSent()
+    +markUndelivered()
+}
+class AuditLog {
+    +record(who String, action String, why String)
+}
+class RetryScheduler {
+    <<Retries>>
+}
+
+PaymentEventPublisher o-- "*" PaymentEventListener : notifies
+PaymentEventPublisher ..> PaymentEvent
+PaymentEventListener <|.. NotificationListener
+PaymentEventListener <|.. AuditLogListener
+PaymentEvent --> PaymentEventType
+NotificationListener o-- NotificationSender
+NotificationListener --> RetryScheduler : on send failure
+AuditLogListener --> AuditLog
+NotificationSender <|.. SmsSender
+NotificationSender <|.. PushSender
+NotificationSender <|.. EmailSender
+NotificationSender ..> Notification
+
+classDef external fill:#eeeeee,stroke:#999999,stroke-dasharray:5 5
+cssClass "RetryScheduler" external

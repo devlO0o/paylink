@@ -1,0 +1,64 @@
+@startuml use-case-4-async-reconciliation
+' PayLink use case diagram 4 of 6: Async & Reconciliation
+' Sources: Requirement/Requirements.md.md (FR-19, FR-21..FR-27), Requirement/UseCases.md
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #3A6EA5
+}
+
+title PayLink - Use Case Diagram 4: Async & Reconciliation
+
+' ---------- Initiating actors (left) ----------
+actor "Scheduler" as Scheduler <<time>>
+actor "TopUpNet\n(async REST + callback)" as TopUpNet <<system>>
+
+' ---------- Secondary actors (right) ----------
+actor "NetCo\n(daily CSV batch)" as NetCo <<system>>
+actor "Biller" as Biller <<system>>
+actor "ElectroCO\n(REST / JSON)" as ElectroCO <<system>>
+actor "AquaCo\n(SOAP-style XML)" as AquaCo <<system>>
+actor "SMS / Push Provider" as SMS <<system>>
+
+rectangle "PayLink System - Async & Reconciliation" {
+  usecase "UC-11 Pay Bill" as UC11
+  usecase "UC-30 Process TopUpNet\nCallback" as UC30
+  usecase "UC-31/32 NetCo Batch\nUpload & Results" as UC3132
+  usecase "UC-33 Resolve Unknown\n(re-query after 1/5/15 min)" as UC33
+  usecase "UC-34 Nightly\nReconciliation" as UC34
+  usecase "Finalize Payment" as FIN
+  usecase "UC-35 Send Notification\n(3 retries)" as UC35
+}
+
+' ---------- Initiators ----------
+TopUpNet --> UC30
+Scheduler --> UC3132
+Scheduler --> UC33
+Scheduler --> UC34
+
+' ---------- Include ----------
+UC30 ..> FIN : <<include>>
+UC3132 ..> FIN : <<include>>
+UC33 ..> FIN : <<include>>
+
+' ---------- Extend (extension --> base) ----------
+' UC-33 runs when a live biller gives no final answer within 10 s (AC-19-B, AC-21-B)
+UC33 ..> UC11 : <<extend>>
+' UC-35 runs when a payment enters Unknown, Completed or Failed/Refunded (FR-27)
+UC35 ..> FIN : <<extend>>
+
+' ---------- Secondary actors (drawn right of the use cases) ----------
+UC3132 --> NetCo
+UC33 --> Biller
+UC34 --> Biller
+UC35 --> SMS
+
+' ---------- Actor generalization (every concrete biller is a Biller) ----------
+Biller <|-- ElectroCO
+Biller <|-- AquaCo
+Biller <|-- TopUpNet
+Biller <|-- NetCo
+
+@enduml

@@ -1,0 +1,70 @@
+@startuml use-case-1-accounts-wallet
+' PayLink use case diagram 1 of 6: Accounts & Wallet
+' Sources: Requirement/Requirements.md.md (FR-01..FR-09), Requirement/UseCases.md
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #3A6EA5
+}
+
+title PayLink - Use Case Diagram 1: Accounts & Wallet
+
+' ---------- Primary actors (left) ----------
+actor Customer
+actor Agent
+actor Admin
+actor "Support Employee" as Support
+
+' ---------- Secondary actors (right) ----------
+actor "Funding Provider\n(Payment Gateway + Bank)" as Funding <<system>>
+actor "SMS / Push Provider" as SMS <<system>>
+
+rectangle "PayLink System - Accounts & Wallet" {
+  usecase "UC-01 Register &\nCreate Wallet" as UC01
+  usecase "Verify OTP" as OTP
+  usecase "UC-02 Log In" as UC02
+  usecase "UC-03 Set / Reset PIN" as UC03
+  usecase "UC-04 Upgrade\nVerification" as UC04
+  usecase "UC-05 View Balance" as UC05
+  usecase "UC-08 Transaction History" as UC08
+  usecase "UC-06 Fund by Card" as UC06
+  usecase "UC-07 Fund by\nBank Transfer" as UC07
+  usecase "UC-16 Deposit\nCustomer Cash" as UC16
+  usecase "UC-29 Process Funding\nConfirmation" as UC29
+  usecase "UC-18 Freeze Wallet" as UC18
+  usecase "UC-25 Block Account" as UC25
+}
+
+' ---------- Customer ----------
+Customer --> UC01
+Customer --> UC02
+Customer --> UC03
+Customer --> UC04
+Customer --> UC05
+Customer --> UC08
+Customer --> UC06
+Customer --> UC07
+
+' ---------- Agent ----------
+Agent --> UC02
+Agent --> UC16
+
+' ---------- Admin ----------
+Admin --> UC02
+Admin --> UC18
+
+' ---------- Support Employee ----------
+Support --> UC02
+Support --> UC25
+
+' ---------- Include ----------
+UC01 ..> OTP : <<include>>
+
+' ---------- Secondary actors (drawn right of the use cases) ----------
+UC01 --> SMS : sends OTP
+' UC-29 credits the wallet exactly once, only after the gateway/bank confirms (FR-07)
+UC29 <-- Funding : starts
+
+@enduml

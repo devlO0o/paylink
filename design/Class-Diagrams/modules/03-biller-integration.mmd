@@ -1,0 +1,94 @@
+%% Module: Biller Integration
+%% Patterns: Adapter (one adapter per biller protocol) + Factory (pick adapter by biller code)
+%% Dashed grey classes belong to other modules.
+
+classDiagram
+direction TB
+
+class BillerGateway {
+    <<interface>>
+    +inquire(accountRef String) Bill
+    +pay(request BillerPaymentRequest) BillerResponse
+    +queryStatus(reference String) BillerResponse
+}
+class BillerGatewayFactory {
+    -Map gatewaysByBillerCode
+    +register(billerCode String, gateway BillerGateway)
+    +forBiller(billerCode String) BillerGateway
+}
+class ElectroCoAdapter {
+    -ElectroCoRestClient client
+    -Duration timeout
+}
+class AquaCoAdapter {
+    -AquaCoSoapClient client
+    -mapErrorCode(code String) String
+}
+class TopUpNetAdapter {
+    -TopUpNetRestClient client
+    -String callbackUrl
+}
+class NetCoBatchAdapter {
+    -NetCoFileClient client
+    +uploadDailyBatch(payments List~Payment~)
+}
+class ElectroCoRestClient {
+    +getBill(meterNumber String) JSON
+    +postPayment(body JSON) JSON
+}
+class AquaCoSoapClient {
+    +send(xmlEnvelope String) String
+}
+class TopUpNetRestClient {
+    +postTopUp(body JSON) JSON
+}
+class NetCoFileClient {
+    +uploadCsv(file File)
+    +downloadResultFile(date Date) File
+}
+class Bill {
+    +String accountRef
+    +Decimal amountDue
+    +Date dueDate
+}
+class BillerPaymentRequest {
+    +String reference
+    +String accountRef
+    +Decimal amount
+}
+class BillerResponse {
+    +BillerResult result
+    +String billerReference
+    +String errorCode
+    +String message
+}
+class BillerResult {
+    <<enumeration>>
+    CONFIRMED
+    REFUSED
+    ACCEPTED_PENDING
+    TIMEOUT
+}
+class Payment {
+    <<PaymentProcessing>>
+}
+
+BillerGateway <|.. ElectroCoAdapter
+BillerGateway <|.. AquaCoAdapter
+BillerGateway <|.. TopUpNetAdapter
+BillerGateway <|.. NetCoBatchAdapter
+ElectroCoAdapter --> ElectroCoRestClient : adapts
+AquaCoAdapter --> AquaCoSoapClient : adapts
+TopUpNetAdapter --> TopUpNetRestClient : adapts
+NetCoBatchAdapter --> NetCoFileClient : adapts
+NetCoBatchAdapter ..> Payment : batches
+BillerGatewayFactory o-- BillerGateway : creates and caches
+BillerGateway ..> Bill
+BillerGateway ..> BillerPaymentRequest
+BillerGateway ..> BillerResponse
+BillerResponse --> BillerResult
+
+note for BillerGatewayFactory "New biller = new adapter + one registration (hard case 8). ElectroCo v2 only touches ElectroCoAdapter."
+
+classDef external fill:#eeeeee,stroke:#999999,stroke-dasharray:5 5
+cssClass "Payment" external

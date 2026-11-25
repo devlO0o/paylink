@@ -1,0 +1,382 @@
+%% PayLink ER diagram - matches docs/design/database-schema.sql (28 tables, 48 foreign keys)
+erDiagram
+    %% ---------- Accounts and Wallet ----------
+    Users {
+        bigint UserId PK
+        varchar Phone UK
+        nvarchar Email UK
+        nvarchar FullName
+        varbinary PasswordHash
+        varchar Role "Customer|Agent|Support|Admin"
+        varchar VerificationLevel "Basic|Verified"
+        varchar Status "Active|Closed"
+        datetime2 CreatedAt
+    }
+    Agents {
+        bigint AgentId PK, FK
+        nvarchar ShopName
+        varchar TerminalCode UK
+        nvarchar Address
+        bit IsActive
+    }
+    Wallets {
+        bigint WalletId PK
+        bigint UserId FK "NULL for system wallets"
+        varchar WalletType "Customer|Agent|System"
+        varchar SystemCode UK
+        char Currency
+        decimal AvailableBalance "CHECK >= 0"
+        decimal HeldBalance "CHECK >= 0"
+        rowversion RowVer
+        datetime2 CreatedAt
+    }
+    TopUps {
+        bigint TopUpId PK
+        bigint WalletId FK
+        varchar Source "Card|AgentCash"
+        bigint AgentId FK
+        decimal Amount
+        varchar IdempotencyKey "UK with WalletId"
+        nvarchar ExternalRef
+        varchar Status "Pending|Completed|Failed"
+        datetime2 CreatedAt
+    }
+    LedgerTransactions {
+        bigint TxnId PK
+        varchar TxnType "TopUp|Hold|Capture|Release|Commission|Refund|Adjustment"
+        bigint PaymentId FK
+        bigint TopUpId FK
+        nvarchar Description
+        bigint CreatedBy FK
+        datetime2 CreatedAt
+    }
+    LedgerEntries {
+        bigint EntryId PK
+        bigint TxnId FK
+        bigint WalletId FK
+        varchar Bucket "Available|Held"
+        decimal Amount "signed, never 0"
+        datetime2 CreatedAt
+    }
+    Holds {
+        bigint HoldId PK
+        bigint WalletId FK
+        bigint PaymentId FK, UK
+        decimal Amount
+        varchar Status "Active|Captured|Released"
+        datetime2 CreatedAt
+        datetime2 ClosedAt
+    }
+    RefundRequests {
+        bigint RefundRequestId PK
+        bigint PaymentId FK
+        bigint RequestedBy FK
+        nvarchar Reason
+        varchar Status "Pending|Approved|Rejected"
+        bigint ReviewedBy FK
+        datetime2 ReviewedAt
+        datetime2 CreatedAt
+    }
+
+    %% ---------- Configuration, Catalog, Fees ----------
+    SystemSettings {
+        varchar SettingKey PK
+        nvarchar Value
+        nvarchar Description
+        bigint UpdatedBy FK
+        datetime2 UpdatedAt
+    }
+    Billers {
+        int BillerId PK
+        varchar Code UK
+        nvarchar Name
+        varchar IntegrationType "RestSync|Soap|RestAsync|Batch"
+        varchar AdapterKey
+        nvarchar BaseUrl
+        int TimeoutSeconds
+        bit IsActive
+        datetime2 CreatedAt
+        datetime2 UpdatedAt
+    }
+    BillerServices {
+        int ServiceId PK
+        int BillerId FK
+        varchar Code "UK with BillerId"
+        nvarchar Name
+        varchar Category "Electricity|Water|Mobile|Internet"
+        decimal MinAmount
+        decimal MaxAmount
+        bit SupportsInquiry
+        bit IsActive
+    }
+    ServiceInputFields {
+        int FieldId PK
+        int ServiceId FK
+        varchar FieldKey "UK with ServiceId"
+        nvarchar Label
+        varchar DataType "Text|Number|Phone"
+        nvarchar ValidationRegex
+        bit IsRequired
+        tinyint SortOrder
+    }
+    FeeRules {
+        int FeeRuleId PK
+        int ServiceId FK
+        varchar FeeType "Fixed|Percent|Tiered"
+        decimal FixedAmount
+        decimal Rate
+        decimal MinFee
+        datetime2 ValidFrom
+        datetime2 ValidTo
+    }
+    FeeTiers {
+        int TierId PK
+        int FeeRuleId FK
+        decimal UpToAmount "NULL = no upper bound"
+        decimal Fee
+    }
+    Promotions {
+        int PromotionId PK
+        int BillerId FK
+        nvarchar Name
+        datetime2 StartAt
+        datetime2 EndAt
+        bit IsActive
+        bigint CreatedBy FK
+    }
+
+    %% ---------- Payment Processing ----------
+    BillInquiries {
+        bigint InquiryId PK
+        bigint UserId FK
+        int ServiceId FK
+        nvarchar InputValues "JSON"
+        decimal BillAmount
+        decimal FeeAmount
+        decimal TotalAmount
+        nvarchar BillerInquiryRef
+        datetime2 CreatedAt
+        datetime2 ExpiresAt
+    }
+    Payments {
+        bigint PaymentId PK
+        varchar Reference UK
+        varchar IdempotencyKey "UK with WalletId"
+        varchar Channel "App|Agent"
+        bigint UserId FK "NULL = walk-in"
+        bigint WalletId FK "payer"
+        bigint AgentId FK
+        int ServiceId FK
+        bigint InquiryId FK
+        nvarchar InputValues "JSON"
+        decimal BillAmount
+        decimal FeeAmount
+        decimal CommissionAmount
+        decimal TotalAmount
+        varchar Status "8 states of section 2.5"
+        nvarchar FailureReason
+        nvarchar BillerReference
+        tinyint RetryCount
+        datetime2 NextRetryAt
+        datetime2 CreatedAt
+        datetime2 UpdatedAt
+        datetime2 CompletedAt
+        rowversion RowVer
+    }
+    PaymentStatusHistory {
+        bigint HistoryId PK
+        bigint PaymentId FK
+        varchar FromStatus
+        varchar ToStatus
+        varchar Event
+        nvarchar Reason
+        bigint ChangedBy FK
+        datetime2 ChangedAt
+    }
+
+    %% ---------- Biller Integration ----------
+    BillerCalls {
+        bigint CallId PK
+        int BillerId FK
+        bigint PaymentId FK
+        bigint InquiryId FK
+        varchar Operation "Inquiry|Pay|Query|BatchUpload"
+        tinyint AttemptNo
+        nvarchar RequestBody
+        nvarchar ResponseBody
+        smallint HttpStatus
+        varchar Outcome "Success|Accepted|Refused|Timeout|Error"
+        int DurationMs
+        datetime2 CreatedAt
+    }
+    BillerCallbacks {
+        bigint CallbackId PK
+        int BillerId FK
+        bigint PaymentId FK
+        varchar PaymentReference "UK with BillerId where not duplicate"
+        varchar ReportedStatus
+        nvarchar RawBody
+        bit IsDuplicate
+        datetime2 ReceivedAt
+    }
+
+    %% ---------- Notifications ----------
+    NotificationTemplates {
+        int TemplateId PK
+        varchar EventType "UK with Channel, Language"
+        varchar Channel "SMS|Email|Push"
+        char Language
+        nvarchar Body
+        bit IsActive
+    }
+    Notifications {
+        bigint NotificationId PK
+        bigint UserId FK
+        bigint PaymentId FK
+        int TemplateId FK
+        varchar Channel
+        nvarchar Recipient
+        nvarchar Body
+        varchar Status "Pending|Sent|Undelivered"
+        tinyint Attempts
+        datetime2 NextAttemptAt
+        nvarchar LastError
+        datetime2 CreatedAt
+        datetime2 SentAt
+    }
+
+    %% ---------- Fraud Checks ----------
+    AccountBlocks {
+        bigint BlockId PK
+        bigint UserId FK
+        varchar Reason "Velocity|Manual|Fraud"
+        nvarchar Note
+        bigint BlockedBy FK
+        datetime2 StartAt
+        datetime2 EndAt
+        bigint UnblockedBy FK
+        datetime2 UnblockedAt
+    }
+
+    %% ---------- Reconciliation ----------
+    SettlementFiles {
+        bigint FileId PK
+        int BillerId FK
+        date BusinessDate "UK with BillerId"
+        nvarchar FileName
+        char Checksum
+        varchar Status "Received|Processed|Error"
+        datetime2 ReceivedAt
+        datetime2 ProcessedAt
+    }
+    SettlementLines {
+        bigint LineId PK
+        bigint FileId FK
+        int LineNumber "UK with FileId"
+        varchar PaymentReference
+        nvarchar BillerReference
+        decimal Amount
+        datetime2 PaidAt
+    }
+    ReconciliationItems {
+        bigint ItemId PK
+        bigint FileId FK
+        bigint PaymentId FK
+        bigint LineId FK
+        varchar DiffType "MissingInPayLink|MissingAtBiller|StatusMismatch|AmountMismatch"
+        varchar PayLinkStatus
+        decimal PayLinkAmount
+        decimal BillerAmount
+        varchar Resolution "Open|Resolved|Ignored"
+        bigint ResolvedBy FK
+        datetime2 ResolvedAt
+        nvarchar Note
+    }
+
+    %% ---------- Cross-cutting ----------
+    AuditLog {
+        bigint AuditId PK
+        bigint ActorUserId FK
+        varchar Action
+        varchar EntityType
+        varchar EntityId
+        nvarchar OldValue
+        nvarchar NewValue
+        nvarchar Reason
+        datetime2 CreatedAt
+    }
+    OutboxMessages {
+        bigint MessageId PK
+        varchar EventType
+        varchar AggregateType
+        varchar AggregateId
+        nvarchar Payload "JSON"
+        datetime2 CreatedAt
+        datetime2 PublishedAt
+        int Attempts
+    }
+
+    %% ================= RELATIONSHIPS (48) =================
+    %% Accounts and Wallet
+    Users ||--o| Agents : "is (agent profile)"
+    Users |o--o{ Wallets : owns
+    Wallets ||--o{ TopUps : "credited by"
+    Agents |o--o{ TopUps : "collects cash for"
+    TopUps |o--o{ LedgerTransactions : "posted as"
+    Payments |o--o{ LedgerTransactions : "posted as"
+    Users |o--o{ LedgerTransactions : "created by"
+    LedgerTransactions ||--|{ LedgerEntries : groups
+    Wallets ||--o{ LedgerEntries : "balance = sum of"
+    Wallets ||--o{ Holds : reserves
+    Payments ||--o| Holds : "funded by"
+    Payments ||--o{ RefundRequests : has
+    Users ||--o{ RefundRequests : requests
+    Users |o--o{ RefundRequests : reviews
+
+    %% Configuration, Catalog, Fees
+    Users |o--o{ SystemSettings : "updated by"
+    Billers ||--o{ BillerServices : offers
+    BillerServices ||--o{ ServiceInputFields : requires
+    BillerServices ||--o{ FeeRules : "priced by"
+    FeeRules ||--o{ FeeTiers : has
+    Billers ||--o{ Promotions : has
+    Users ||--o{ Promotions : creates
+
+    %% Payment Processing
+    Users ||--o{ BillInquiries : runs
+    BillerServices ||--o{ BillInquiries : for
+    BillInquiries |o--o{ Payments : "leads to"
+    Users |o--o{ Payments : "customer of"
+    Wallets ||--o{ Payments : "pays from"
+    Agents |o--o{ Payments : "made at"
+    BillerServices ||--o{ Payments : for
+    Payments ||--|{ PaymentStatusHistory : tracks
+    Users |o--o{ PaymentStatusHistory : "changed by"
+
+    %% Biller Integration
+    Billers ||--o{ BillerCalls : receives
+    Payments |o--o{ BillerCalls : logs
+    BillInquiries |o--o{ BillerCalls : logs
+    Billers ||--o{ BillerCallbacks : sends
+    Payments |o--o{ BillerCallbacks : "resolved by"
+
+    %% Notifications
+    NotificationTemplates ||--o{ Notifications : renders
+    Users |o--o{ Notifications : receives
+    Payments |o--o{ Notifications : triggers
+
+    %% Fraud Checks
+    Users ||--o{ AccountBlocks : "is blocked"
+    Users |o--o{ AccountBlocks : "blocked by"
+    Users |o--o{ AccountBlocks : "unblocked by"
+
+    %% Reconciliation
+    Billers ||--o{ SettlementFiles : sends
+    SettlementFiles ||--|{ SettlementLines : contains
+    SettlementFiles ||--o{ ReconciliationItems : produces
+    Payments |o--o{ ReconciliationItems : "flagged in"
+    SettlementLines |o--o{ ReconciliationItems : "flagged in"
+    Users |o--o{ ReconciliationItems : resolves
+
+    %% Cross-cutting
+    Users |o--o{ AuditLog : performs

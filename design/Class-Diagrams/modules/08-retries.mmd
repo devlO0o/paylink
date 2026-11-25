@@ -1,0 +1,58 @@
+%% Module: Retries
+%% Pattern: Command (each retry is an object the scheduler runs later)
+%% Dashed grey classes belong to other modules.
+
+classDiagram
+direction TB
+
+class RetryableCommand {
+    <<interface>>
+    +execute() boolean
+    +attempt() int
+    +onExhausted()
+}
+class RequeryPaymentCommand {
+    -UUID paymentId
+    -BillerGateway gateway
+    -int attempt
+}
+class SendNotificationCommand {
+    -Notification notification
+    -NotificationSender sender
+    -int attempt
+}
+class RetryScheduler {
+    -RetryPolicy policy
+    +schedule(cmd RetryableCommand)
+    +runDue()
+}
+class RetryPolicy {
+    +List~Duration~ delays
+    +maxAttempts() int
+}
+class BillerGateway {
+    <<BillerIntegration>>
+}
+class PaymentService {
+    <<PaymentProcessing>>
+}
+class NotificationSender {
+    <<Notifications>>
+}
+class Notification {
+    <<Notifications>>
+}
+
+RetryableCommand <|.. RequeryPaymentCommand
+RetryableCommand <|.. SendNotificationCommand
+RetryScheduler o-- "*" RetryableCommand : invokes
+RetryScheduler --> RetryPolicy
+RequeryPaymentCommand --> BillerGateway : queryStatus
+RequeryPaymentCommand --> PaymentService : confirm or refuse
+SendNotificationCommand --> NotificationSender : send
+SendNotificationCommand --> Notification
+
+note for RetryPolicy "Requery: after 1, 5, 15 min then wait for reconciliation. Notifications: 3 retries then UNDELIVERED."
+
+classDef external fill:#eeeeee,stroke:#999999,stroke-dasharray:5 5
+cssClass "BillerGateway,PaymentService,NotificationSender,Notification" external

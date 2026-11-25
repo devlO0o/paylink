@@ -1,0 +1,511 @@
+%% PayLink - domain class diagram
+%% Patterns: Adapter + Factory (billers), Strategy (fees), State (payment),
+%%           Chain of Responsibility (fraud), Observer (notifications), Command (retries)
+%% All money fields are Decimal (never float).
+
+classDiagram
+direction TB
+
+%% ======================= Accounts and Wallet =======================
+namespace AccountsAndWallet {
+    class Customer {
+        +UUID id
+        +String name
+        +String phone
+        +VerificationLevel level
+        +boolean blocked
+        +DateTime blockedUntil
+        +upgradeToVerified()
+        +block(until DateTime)
+        +unblock()
+    }
+    class Agent {
+        +UUID id
+        +String shopName
+        +String terminalId
+    }
+    class VerificationLevel {
+        <<enumeration>>
+        BASIC
+        VERIFIED
+    }
+    class Wallet {
+        +UUID id
+        +UUID ownerId
+        +availableBalance() Decimal
+        +heldBalance() Decimal
+        +topUp(amount Decimal, source String)
+        +hold(amount Decimal, paymentId UUID)
+        +captureHold(paymentId UUID)
+        +releaseHold(paymentId UUID)
+        +credit(amount Decimal, reason String)
+    }
+    class LedgerEntry {
+        +UUID id
+        +UUID walletId
+        +EntryType type
+        +Decimal amount
+        +UUID paymentId
+        +String reason
+        +DateTime createdAt
+    }
+    class EntryType {
+        <<enumeration>>
+        TOP_UP
+        HOLD
+        RELEASE
+        CAPTURE
+        FEE_INCOME
+        COMMISSION
+        REFUND
+    }
+}
+
+%% ======================= Biller Catalog =======================
+namespace BillerCatalog {
+    class Biller {
+        +UUID id
+        +String code
+        +String name
+        +BillerCategory category
+        +boolean active
+        +disable()
+    }
+    class BillerService {
+        +UUID id
+        +String name
+        +List~String~ requiredFields
+        +Decimal minAmount
+        +Decimal maxAmount
+        +boolean active
+    }
+    class BillerCategory {
+        <<enumeration>>
+        ELECTRICITY
+        WATER
+        MOBILE
+        INTERNET
+    }
+}
+
+%% ============ Biller Integration (Adapter + Factory) ============
+namespace BillerIntegration {
+    class BillerGateway {
+        <<interface>>
+        +inquire(accountRef String) Bill
+        +pay(request BillerPaymentRequest) BillerResponse
+        +queryStatus(reference String) BillerResponse
+    }
+    class BillerGatewayFactory {
+        -Map gatewaysByBillerCode
+        +register(billerCode String, gateway BillerGateway)
+        +forBiller(billerCode String) BillerGateway
+    }
+    class ElectroCoAdapter {
+        -ElectroCoRestClient client
+        -Duration timeout
+    }
+    class AquaCoAdapter {
+        -AquaCoSoapClient client
+        -mapErrorCode(code String) String
+    }
+    class TopUpNetAdapter {
+        -TopUpNetRestClient client
+        -String callbackUrl
+    }
+    class NetCoBatchAdapter {
+        -NetCoFileClient client
+        +uploadDailyBatch(payments List~Payment~)
+    }
+    class ElectroCoRestClient {
+        +getBill(meterNumber String) JSON
+        +postPayment(body JSON) JSON
+    }
+    class AquaCoSoapClient {
+        +send(xmlEnvelope String) String
+    }
+    class TopUpNetRestClient {
+        +postTopUp(body JSON) JSON
+    }
+    class NetCoFileClient {
+        +uploadCsv(file File)
+        +downloadResultFile(date Date) File
+    }
+    class Bill {
+        +String accountRef
+        +Decimal amountDue
+        +Date dueDate
+    }
+    class BillerPaymentRequest {
+        +String reference
+        +String accountRef
+        +Decimal amount
+    }
+    class BillerResponse {
+        +BillerResult result
+        +String billerReference
+        +String errorCode
+        +String message
+    }
+    class BillerResult {
+        <<enumeration>>
+        CONFIRMED
+        REFUSED
+        ACCEPTED_PENDING
+        TIMEOUT
+    }
+}
+
+%% ======================= Fees and Commissions (Strategy) =======================
+namespace FeesAndCommissions {
+    class FeeStrategy {
+        <<interface>>
+        +calculate(amount Decimal) Decimal
+    }
+    class FixedFeeStrategy {
+        -Decimal fee
+    }
+    class PercentageFeeStrategy {
+        -Decimal rate
+        -Decimal minimumFee
+    }
+    class TieredFeeStrategy {
+        -Decimal threshold
+        -Decimal lowFee
+        -Decimal highFee
+    }
+    class PromotionFeeStrategy {
+        -FeeStrategy regular
+        -String billerCode
+        -DateTime start
+        -DateTime end
+        -Clock clock
+    }
+    class FeeService {
+        -Map strategiesByCategory
+        +quote(service BillerService, amount Decimal) FeeQuote
+    }
+    class FeeQuote {
+        +Decimal amount
+        +Decimal fee
+        +Decimal total
+    }
+    class CommissionPolicy {
+        -Decimal agentShare
+        +commissionFor(fee Decimal) Decimal
+    }
+}
+
+%% ======================= Payment Processing (State) =======================
+namespace PaymentProcessing {
+    class PaymentService {
+        +inquire(serviceId UUID, accountRef String) FeeQuote
+        +pay(request PayBillRequest, idempotencyKey String) PaymentResult
+        +onBillerCallback(reference String, result BillerResult)
+        +refund(paymentId UUID)
+    }
+    class PayBillRequest {
+        +UUID customerId
+        +UUID agentId
+        +UUID billerServiceId
+        +String accountRef
+        +Decimal amount
+    }
+    class PaymentResult {
+        +UUID paymentId
+        +String reference
+        +String state
+        +Decimal amount
+        +Decimal fee
+        +Decimal total
+        +String message
+    }
+    class IdempotencyStore {
+        +find(key String) PaymentResult
+        +save(key String, result PaymentResult)
+    }
+    class Payment {
+        +UUID id
+        +String reference
+        +String idempotencyKey
+        +UUID customerId
+        +UUID agentId
+        +UUID billerServiceId
+        +String accountRef
+        +Decimal amount
+        +Decimal fee
+        +Decimal total
+        -PaymentState state
+        +holdFunds()
+        +reject(reason String)
+        +sendToBiller()
+        +confirm(billerRef String)
+        +refuse(reason String)
+        +timeout()
+        +refund()
+        ~changeState(next PaymentState, reason String)
+    }
+    class PaymentStatusChange {
+        +String fromState
+        +String toState
+        +String reason
+        +DateTime at
+    }
+    class PaymentState {
+        <<abstract>>
+        +holdFunds(p Payment)
+        +reject(p Payment, reason String)
+        +sendToBiller(p Payment)
+        +confirm(p Payment, billerRef String)
+        +refuse(p Payment, reason String)
+        +timeout(p Payment)
+        +refund(p Payment)
+        +isFinal() boolean
+        +name() String
+    }
+    class InitiatedState
+    class FundsHeldState
+    class SentToBillerState
+    class UnknownState
+    class CompletedState
+    class FailedState
+    class RejectedState
+    class RefundedState
+}
+
+%% ======================= Fraud Checks (Chain of Responsibility) =======================
+namespace FraudChecks {
+    class FraudCheckHandler {
+        <<abstract>>
+        -FraudCheckHandler next
+        +setNext(next FraudCheckHandler) FraudCheckHandler
+        +check(payment Payment, customer Customer) FraudResult
+        #doCheck(payment Payment, customer Customer)* FraudResult
+    }
+    class BlockedAccountCheck
+    class AmountLimitCheck {
+        -Decimal minAmount
+        -Decimal maxAmount
+    }
+    class DailyLimitCheck {
+        -Decimal basicLimit
+        -Decimal verifiedLimit
+    }
+    class VelocityCheck {
+        -int maxPayments
+        -Duration window
+        -Duration blockFor
+    }
+    class FraudResult {
+        +boolean passed
+        +String reason
+    }
+}
+
+%% ======================= Notifications (Observer) =======================
+namespace Notifications {
+    class PaymentEventPublisher {
+        -List~PaymentEventListener~ listeners
+        +subscribe(l PaymentEventListener)
+        +unsubscribe(l PaymentEventListener)
+        +publish(e PaymentEvent)
+    }
+    class PaymentEventListener {
+        <<interface>>
+        +onPaymentEvent(e PaymentEvent)
+    }
+    class PaymentEvent {
+        +UUID paymentId
+        +PaymentEventType type
+        +String reason
+        +DateTime occurredAt
+    }
+    class PaymentEventType {
+        <<enumeration>>
+        COMPLETED
+        FAILED
+        UNKNOWN
+        REJECTED
+        REFUNDED
+    }
+    class NotificationListener {
+        -List~NotificationSender~ senders
+        -TemplateRepository templates
+    }
+    class AuditLogListener {
+        -AuditLog auditLog
+    }
+    class NotificationSender {
+        <<interface>>
+        +channel() Channel
+        +send(n Notification)
+    }
+    class SmsSender
+    class PushSender
+    class EmailSender
+    class Notification {
+        +UUID id
+        +UUID customerId
+        +Channel channel
+        +String body
+        +int attempts
+        +DeliveryStatus status
+        +markSent()
+        +markUndelivered()
+    }
+    class AuditLog {
+        +record(who String, action String, why String)
+    }
+}
+
+%% ======================= Retries (Command) =======================
+namespace Retries {
+    class RetryableCommand {
+        <<interface>>
+        +execute() boolean
+        +attempt() int
+        +onExhausted()
+    }
+    class RequeryPaymentCommand {
+        -UUID paymentId
+        -BillerGateway gateway
+        -int attempt
+    }
+    class SendNotificationCommand {
+        -Notification notification
+        -NotificationSender sender
+        -int attempt
+    }
+    class RetryScheduler {
+        -RetryPolicy policy
+        +schedule(cmd RetryableCommand)
+        +runDue()
+    }
+    class RetryPolicy {
+        +List~Duration~ delays
+        +maxAttempts() int
+    }
+}
+
+%% ======================= Reconciliation =======================
+namespace Reconciliation {
+    class ReconciliationService {
+        +reconcile(file SettlementFile) ReconciliationReport
+    }
+    class SettlementFile {
+        +String billerCode
+        +Date businessDate
+        +List~SettlementLine~ lines
+    }
+    class SettlementLine {
+        +String reference
+        +Decimal amount
+    }
+    class ReconciliationReport {
+        +Date businessDate
+        +List~Discrepancy~ discrepancies
+    }
+    class Discrepancy {
+        +String reference
+        +String paylinkState
+        +String billerState
+        +String description
+    }
+}
+
+%% ----------------------- Relationships -----------------------
+Customer "1" --> "1" Wallet
+Agent "1" --> "1" Wallet
+Customer --> VerificationLevel
+Wallet "1" *-- "*" LedgerEntry
+LedgerEntry --> EntryType
+
+Biller "1" *-- "*" BillerService
+Biller --> BillerCategory
+
+BillerGateway <|.. ElectroCoAdapter
+BillerGateway <|.. AquaCoAdapter
+BillerGateway <|.. TopUpNetAdapter
+BillerGateway <|.. NetCoBatchAdapter
+ElectroCoAdapter --> ElectroCoRestClient : adapts
+AquaCoAdapter --> AquaCoSoapClient : adapts
+TopUpNetAdapter --> TopUpNetRestClient : adapts
+NetCoBatchAdapter --> NetCoFileClient : adapts
+BillerGatewayFactory o-- BillerGateway : creates and caches
+BillerGateway ..> Bill
+BillerGateway ..> BillerResponse
+BillerResponse --> BillerResult
+
+FeeStrategy <|.. FixedFeeStrategy
+FeeStrategy <|.. PercentageFeeStrategy
+FeeStrategy <|.. TieredFeeStrategy
+FeeStrategy <|.. PromotionFeeStrategy
+PromotionFeeStrategy o-- FeeStrategy : wraps regular fee
+FeeService o-- FeeStrategy : selects by category
+FeeService ..> FeeQuote
+
+PaymentService --> IdempotencyStore
+PaymentService ..> PayBillRequest : receives
+PaymentService ..> PaymentResult : returns
+IdempotencyStore o-- PaymentResult : caches by key
+PaymentResult ..> Payment : snapshot of
+PaymentService --> FraudCheckHandler : runs chain
+PaymentService --> FeeService
+PaymentService --> CommissionPolicy
+PaymentService --> BillerGatewayFactory
+PaymentService --> Wallet : hold / capture / release
+PaymentService --> PaymentEventPublisher : publishes
+PaymentService --> RetryScheduler : schedules requery
+Payment --> PaymentState : current
+Payment "1" *-- "*" PaymentStatusChange : history
+Payment --> Customer
+Payment --> "0..1" Agent
+Payment --> BillerService
+
+PaymentState <|-- InitiatedState
+PaymentState <|-- FundsHeldState
+PaymentState <|-- SentToBillerState
+PaymentState <|-- UnknownState
+PaymentState <|-- CompletedState
+PaymentState <|-- FailedState
+PaymentState <|-- RejectedState
+PaymentState <|-- RefundedState
+
+FraudCheckHandler <|-- BlockedAccountCheck
+FraudCheckHandler <|-- AmountLimitCheck
+FraudCheckHandler <|-- DailyLimitCheck
+FraudCheckHandler <|-- VelocityCheck
+FraudCheckHandler o-- FraudCheckHandler : next
+FraudCheckHandler ..> FraudResult
+
+PaymentEventPublisher o-- "*" PaymentEventListener : notifies
+PaymentEventListener <|.. NotificationListener
+PaymentEventListener <|.. AuditLogListener
+PaymentEvent --> PaymentEventType
+NotificationListener o-- NotificationSender
+NotificationListener --> RetryScheduler : on send failure
+AuditLogListener --> AuditLog
+NotificationSender <|.. SmsSender
+NotificationSender <|.. PushSender
+NotificationSender <|.. EmailSender
+NotificationSender ..> Notification
+
+RetryableCommand <|.. RequeryPaymentCommand
+RetryableCommand <|.. SendNotificationCommand
+RetryScheduler o-- "*" RetryableCommand : invokes
+RetryScheduler --> RetryPolicy
+RequeryPaymentCommand --> BillerGateway
+RequeryPaymentCommand --> PaymentService : confirm or refuse
+SendNotificationCommand --> NotificationSender
+
+ReconciliationService ..> SettlementFile
+ReconciliationService ..> ReconciliationReport
+ReconciliationService --> Payment : compares
+SettlementFile "1" *-- "*" SettlementLine
+ReconciliationReport "1" *-- "*" Discrepancy
+
+note for PaymentState "State: each subclass allows only the transitions in brief 2.5; anything else throws IllegalTransitionException. UnknownState never refunds."
+note for BillerGatewayFactory "Factory: new biller = new adapter + one registration (hard case 8). ElectroCo v2 only touches ElectroCoAdapter."
+note for FraudCheckHandler "Chain: Blocked -> AmountLimit -> DailyLimit -> Velocity; first failure stops the chain."
+note for PromotionFeeStrategy "Returns 0 for the promoted biller inside the window, else delegates to regular."
+note for RetryPolicy "Requery: 1, 5, 15 min then wait for reconciliation. Notifications: 3 retries then UNDELIVERED."

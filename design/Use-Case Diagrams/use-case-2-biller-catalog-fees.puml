@@ -1,0 +1,43 @@
+@startuml use-case-2-biller-catalog-fees
+' PayLink use case diagram 2 of 6: Biller Catalog & Fees
+' Sources: Requirement/Requirements.md.md (FR-10..FR-13, FR-29), Requirement/UseCases.md
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #3A6EA5
+}
+
+title PayLink - Use Case Diagram 2: Biller Catalog & Fees
+
+' ---------- Primary actors (left) ----------
+actor Customer
+actor Admin
+
+' ---------- Secondary actors (right) ----------
+actor "ElectroCO\n(REST / JSON)" as ElectroCO <<system>>
+actor "AquaCo\n(SOAP-style XML)" as AquaCo <<system>>
+
+rectangle "PayLink System - Biller Catalog & Fees" {
+  usecase "UC-09 Browse Billers" as UC09
+  usecase "UC-10 Inquire Bill" as UC10
+  usecase "UC-19 Manage Billers" as UC19
+  usecase "UC-20 Manage Fees,\nPromotions & Limits" as UC20
+  usecase "UC-21 Manage Agents" as UC21
+}
+
+' ---------- Customer ----------
+Customer --> UC09
+Customer --> UC10
+
+' ---------- Admin ----------
+Admin --> UC19
+Admin --> UC20
+Admin --> UC21
+
+' ---------- Billers with live inquiry (TopUpNet and NetCo have none) ----------
+UC10 --> ElectroCO
+UC10 --> AquaCo
+
+@enduml
